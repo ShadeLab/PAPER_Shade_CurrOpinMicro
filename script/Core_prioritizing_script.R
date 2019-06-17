@@ -9,14 +9,20 @@ setwd('~/Documents/git/PAPER_Shade_CurrOpinMicro/')
 #Switchgrass project
 
 ##Prioritizing core microbiome based on time
-nReads=1000
+nReads=1000                                                            # input dataset needs to be rarified and the rarifaction depth included 
 otu <- readRDS('data/switchgrassOTUtable.rds')
 map <- readRDS('data/switchgrassMAPtable.rds')
 
 otu_PA <- 1*((otu>0)==1)                                               # presence-absence data
 otu_occ <- rowSums(otu_PA)/ncol(otu_PA)                                # occupancy calculation
-otu_rel <- apply(decostand(otu, method="total", MARGIN=2),1, mean)     # relative abundance  
+otu_rel <- apply(decostand(otu, method="total", MARGIN=2),1, mean)     # mean relative abundance
 occ_abun <- add_rownames(as.data.frame(cbind(otu_occ, otu_rel)),'otu') # combining occupancy and abundance 
+
+# Ranking the OTUs based on their occupancy
+# For caluclating raking index we included following conditions:
+#   - frequency of detection within time point (genotype or site)
+#   - has occupancy of 1 in at least one time point (genotype or site) (1 if occupancy 1, else 0)
+#   - detection by time points (genotypes, site) (1 if detected else 0)
 
 PresenceSum <- data.frame(otu = as.factor(row.names(otu)), otu) %>% 
   gather(sequence_name, abun, -otu) %>%
@@ -28,14 +34,14 @@ PresenceSum <- data.frame(otu = as.factor(row.names(otu)), otu) %>%
   group_by(otu) %>%
   summarise(sumF=sum(time_freq),
             sumG=sum(coreTime),
-            sumD=sum(detect),
-            nS=length(sampling_date)*3,
-            Index=(sumF+sumG+sumD)/nS)                 # calculating weighting Index based on number of time points detected and 
+            #sumD=sum(detect),
+            nS=length(sampling_date)*2,
+            Index=(sumF+sumG)/nS)                 # calculating weighting Index based on number of time points detected and 
 
 otu_ranked <- occ_abun %>%
   left_join(PresenceSum, by='otu') %>%
   transmute(otu=otu,
-            rank=otu_rel+Index) %>%
+            rank=Index) %>%
   arrange(desc(rank))
 
 # Calculating the contribution of ranked OTUs to the BC similarity
@@ -110,16 +116,34 @@ ggplot(BC_ranked[1:100,], aes(x=factor(BC_ranked$rank[1:100], levels=BC_ranked$r
   geom_vline(xintercept=elbow, lty=3, col='red', cex=.5) +
   geom_vline(xintercept=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)])), lty=3, col='blue', cex=.5) +
   labs(x='ranked OTUs',y='Bray-Curtis similarity') +
-  annotate(geom="text", x=elbow+10, y=.1, label=paste("Elbow method"," (",elbow,")", sep=''), color="red")+    
-  annotate(geom="text", x=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))+3, y=.2, label="Last 2% increase", color="blue")
+  annotate(geom="text", x=elbow+14, y=.1, label=paste("Elbow method"," (",elbow,")", sep=''), color="red")+    
+  annotate(geom="text", x=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))+3, y=.5, label=paste("Last 2% increase (",last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)])),")",sep=''), color="blue")
 
+#Creating occupancy abundance plot
 occ_abun$fill <- 'no'
 occ_abun$fill[occ_abun$otu %in% otu_ranked$otu[1:last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))]] <- 'core'
 
-#Creating occupancy abundance plot
+#Fitting neutral model (Burns et al., 2016 (ISME J) - functions are in the sncm.fit.R)
+spp=t(otu)
+taxon=as.vector(rownames(otu))
+
+#Models for the whole community
+obs.np=sncm.fit(spp, taxon, stats=FALSE, pool=NULL)
+sta.np=sncm.fit(spp, taxon, stats=TRUE, pool=NULL)
+sta.np.16S <- sta.np
+
+above.pred=sum(obs.np$freq > (obs.np$pred.upr), na.rm=TRUE)/sta.np$Richness
+below.pred=sum(obs.np$freq < (obs.np$pred.lwr), na.rm=TRUE)/sta.np$Richness
+
+ap = obs.np$freq > (obs.np$pred.upr)
+bp = obs.np$freq < (obs.np$pred.lwr)
+
 ggplot() +
   geom_point(data=occ_abun[occ_abun$fill=='no',], aes(x=log10(otu_rel), y=otu_occ), pch=21, fill='white', alpha=.2)+
   geom_point(data=occ_abun[occ_abun$fill!='no',], aes(x=log10(otu_rel), y=otu_occ), pch=21, fill='blue', size=1.8) +
+  geom_line(color='black', data=obs.np, size=1, aes(y=obs.np$freq.pred, x=log10(obs.np$p)), alpha=.25) +
+  geom_line(color='black', lty='twodash', size=1, data=obs.np, aes(y=obs.np$pred.upr, x=log10(obs.np$p)), alpha=.25)+
+  geom_line(color='black', lty='twodash', size=1, data=obs.np, aes(y=obs.np$pred.lwr, x=log10(obs.np$p)), alpha=.25)+
   labs(x="log10(mean relative abundance)", y="Occupancy")
 
 #Creating a plot of core taxa occupancy by time point
@@ -176,7 +200,7 @@ PresenceSum <- data.frame(otu = as.factor(row.names(otu)), otu) %>%
 otu_ranked <- occ_abun %>%
   left_join(PresenceSum, by='otu') %>%
   transmute(otu=otu,
-            rank=otu_rel+Index) %>%
+            rank=Index) %>%
   arrange(desc(rank))
 
 BCaddition <- NULL
@@ -239,14 +263,32 @@ ggplot(BC_ranked[1:200,], aes(x=factor(BC_ranked$rank[1:200], levels=BC_ranked$r
   geom_vline(xintercept=elbow, lty=3, col='red', cex=.5) +
   geom_vline(xintercept=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)])), lty=3, col='blue', cex=.5) +
   labs(x='ranked OTUs',y='Bray-Curtis similarity') +
-  annotate(geom="text", x=elbow+3, y=.2, label=paste("Elbow method"," (",elbow,")", sep=''), color="red")+    
-  annotate(geom="text", x=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))+3, y=.2, label=paste("Last 2% increase (",last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)])),")", sep=''), color="blue")
+  annotate(geom="text", x=elbow+10, y=.08, label=paste("Elbow method"," (",elbow,")", sep=''), color="red")+    
+  annotate(geom="text", x=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))-4, y=.08, label=paste("Last 2% increase (",last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)])),")", sep=''), color="blue")
 
 occ_abun$fill <- 'no'
 occ_abun$fill[occ_abun$otu %in% otu_ranked$otu[1:last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))]] <- 'core'
+
+spp=t(otu)
+taxon=as.vector(rownames(otu))
+
+#Models for the whole community
+obs.np=sncm.fit(spp, taxon, stats=FALSE, pool=NULL)
+sta.np=sncm.fit(spp, taxon, stats=TRUE, pool=NULL)
+sta.np.16S <- sta.np
+
+above.pred=sum(obs.np$freq > (obs.np$pred.upr), na.rm=TRUE)/sta.np$Richness
+below.pred=sum(obs.np$freq < (obs.np$pred.lwr), na.rm=TRUE)/sta.np$Richness
+
+ap = obs.np$freq > (obs.np$pred.upr)
+bp = obs.np$freq < (obs.np$pred.lwr)
+
 ggplot() +
   geom_point(data=occ_abun[occ_abun$fill=='no',], aes(x=log10(otu_rel), y=otu_occ), pch=21, fill='white', alpha=.2)+
-  geom_point(data=occ_abun[occ_abun$fill!='no',], aes(x=log10(otu_rel), y=otu_occ), pch=21, fill='darkred', size=1.8) +
+  geom_point(data=occ_abun[occ_abun$fill!='no',], aes(x=log10(otu_rel), y=otu_occ), pch=21, fill='blue', size=1.8) +
+  geom_line(color='black', data=obs.np, size=1, aes(y=obs.np$freq.pred, x=log10(obs.np$p)), alpha=.25) +
+  geom_line(color='black', lty='twodash', size=1, data=obs.np, aes(y=obs.np$pred.upr, x=log10(obs.np$p)), alpha=.25)+
+  geom_line(color='black', lty='twodash', size=1, data=obs.np, aes(y=obs.np$pred.lwr, x=log10(obs.np$p)), alpha=.25)+
   labs(x="log10(mean relative abundance)", y="Occupancy")
 
 core <- occ_abun$otu[occ_abun$fill == 'core']
@@ -272,6 +314,7 @@ ggplot(plotDF,aes(x=otu, genotype_freq, group=Genotype,fill=Genotype)) +    geom
   theme(axis.text = element_text(size=6)) +
   labs(x='Ranked ZOTUs', y='Occupancy by genotype and origin')
 
+#----------------------------------------------------------------------------------------------------
 #Bean project
 
 ##Prioritizing core microbiome based on the site
@@ -365,14 +408,32 @@ ggplot(BC_ranked[1:200,], aes(x=factor(BC_ranked$rank[1:200], levels=BC_ranked$r
   geom_vline(xintercept=elbow, lty=3, col='red', cex=.5) +
   geom_vline(xintercept=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)])), lty=3, col='blue', cex=.5) +
   labs(x='ranked OTUs',y='Bray-Curtis similarity') +
-  annotate(geom="text", x=elbow+6, y=.15, label=paste("Elbow method"," (",elbow,")", sep=''), color="red")+    
-  annotate(geom="text", x=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))+3, y=.2, label="Last 2% increase", color="blue")
+  annotate(geom="text", x=elbow+10, y=.15, label=paste("Elbow method"," (",elbow,")", sep=''), color="red")+    
+  annotate(geom="text", x=last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))-4, y=.08, label=paste("Last 2% increase (",last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)])),')',sep=''), color="blue")
 
 occ_abun$fill <- 'no'
 occ_abun$fill[occ_abun$otu %in% otu_ranked$otu[1:last(as.numeric(BC_ranked$rank[(BC_ranked$IncreaseBC>=1.02)]))]] <- 'core'
+
+spp=t(otu)
+taxon=as.vector(rownames(otu))
+
+#Models for the whole community
+obs.np=sncm.fit(spp, taxon, stats=FALSE, pool=NULL)
+sta.np=sncm.fit(spp, taxon, stats=TRUE, pool=NULL)
+sta.np.16S <- sta.np
+
+above.pred=sum(obs.np$freq > (obs.np$pred.upr), na.rm=TRUE)/sta.np$Richness
+below.pred=sum(obs.np$freq < (obs.np$pred.lwr), na.rm=TRUE)/sta.np$Richness
+
+ap = obs.np$freq > (obs.np$pred.upr)
+bp = obs.np$freq < (obs.np$pred.lwr)
+
 ggplot() +
   geom_point(data=occ_abun[occ_abun$fill=='no',], aes(x=log10(otu_rel), y=otu_occ), pch=21, fill='white', alpha=.2)+
-  geom_point(data=occ_abun[occ_abun$fill!='no',], aes(x=log10(otu_rel), y=otu_occ), pch=21, fill='darkred', size=1.8) +
+  geom_point(data=occ_abun[occ_abun$fill!='no',], aes(x=log10(otu_rel), y=otu_occ), pch=21, fill='blue', size=1.8) +
+  geom_line(color='black', data=obs.np, size=1, aes(y=obs.np$freq.pred, x=log10(obs.np$p)), alpha=.25) +
+  geom_line(color='black', lty='twodash', size=1, data=obs.np, aes(y=obs.np$pred.upr, x=log10(obs.np$p)), alpha=.25)+
+  geom_line(color='black', lty='twodash', size=1, data=obs.np, aes(y=obs.np$pred.lwr, x=log10(obs.np$p)), alpha=.25)+
   labs(x="log10(mean relative abundance)", y="Occupancy")
 
 core <- occ_abun$otu[occ_abun$fill == 'core']
