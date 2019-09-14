@@ -6,9 +6,10 @@ theme_set(theme_light())
 setwd('~/Documents/git/PAPER_Shade_CurrOpinMicro/')
 
 #-----------------------------------------------------------------------------------------
-#Switchgrass project
+##Prioritizing core microbiome based on TIME
 
-##Prioritizing core microbiome based on time
+#Example  - switchgrass dataset (Grady et al. (2019))
+
 nReads=1000                                                            # input dataset needs to be rarified and the rarifaction depth included 
 otu <- readRDS('data/switchgrassOTUtable.rds')
 map <- readRDS('data/switchgrassMAPtable.rds')
@@ -16,26 +17,23 @@ map <- readRDS('data/switchgrassMAPtable.rds')
 otu_PA <- 1*((otu>0)==1)                                               # presence-absence data
 otu_occ <- rowSums(otu_PA)/ncol(otu_PA)                                # occupancy calculation
 otu_rel <- apply(decostand(otu, method="total", MARGIN=2),1, mean)     # mean relative abundance
-occ_abun <- add_rownames(as.data.frame(cbind(otu_occ, otu_rel)),'otu') # combining occupancy and abundance 
+occ_abun <- add_rownames(as.data.frame(cbind(otu_occ, otu_rel)),'otu') # combining occupancy and abundance data frame
 
-# Ranking the OTUs based on their occupancy
+# Ranking OTUs based on their occupancy
 # For caluclating raking index we included following conditions:
-#   - frequency of detection within time point (genotype or site)
-#   - has occupancy of 1 in at least one time point (genotype or site) (1 if occupancy 1, else 0)
-#   - detection by time points (genotypes, site) (1 if detected else 0)
+#   - time-specific occupancy (sumF) = frequency of detection within time point (genotype or site)
+#   - replication consistency (sumG) = has occupancy of 1 in at least one time point (genotype or site) (1 if occupancy 1, else 0)
 
 PresenceSum <- data.frame(otu = as.factor(row.names(otu)), otu) %>% 
   gather(sequence_name, abun, -otu) %>%
   left_join(map, by = 'sequence_name') %>%
   group_by(otu, sampling_date) %>%
-  summarise(time_freq=sum(abun>0)/length(abun),        # frequency of detection between time points
-            coreTime=ifelse(time_freq == 1, 1, 0),     # 1 only if occupancy 1 with specific genotype, 0 if not
-            detect=ifelse(time_freq > 0, 1, 0)) %>%    # 1 if detected and 0 if not detected with specific genotype
+  summarise(time_freq=sum(abun>0)/length(abun),            # frequency of detection between time points
+            coreTime=ifelse(time_freq == 1, 1, 0)) %>%     # 1 only if occupancy 1 with specific time, 0 if not
   group_by(otu) %>%
   summarise(sumF=sum(time_freq),
             sumG=sum(coreTime),
-            #sumD=sum(detect),
-            nS=length(sampling_date)*2,
+            nS=length(sampling_date)*2,           
             Index=(sumF+sumG)/nS)                 # calculating weighting Index based on number of time points detected and 
 
 otu_ranked <- occ_abun %>%
@@ -171,9 +169,10 @@ ggplot(plotDF,aes(x=otu, time_freq,fill=factor(sampling_date))) +
   labs(x='Ranked OTUs', y='Occupancy by site')
 
 #-----------------------------------------------------------------------------------------
-#Mimulus project
-
 ##Prioritizing core microbiome based on the GENOTYPE
+
+#Example data - Bowsher et al. (2019)
+
 nReads=10000
 otu <- readRDS('data/mimulusOTUtable.rds')
 map <- readRDS('data/mimulusMAPtable.rds')
@@ -188,14 +187,12 @@ PresenceSum <- data.frame(otu = as.factor(row.names(otu)), otu) %>%
   left_join(map, by = 'SampleID') %>%
   group_by(otu, Origin) %>%
   summarise(genotype_freq=sum(abun>0)/length(abun),        # frequency of detection between time points
-            coreGenotype=ifelse(genotype_freq == 1, 1, 0), # 1 only if occupancy 1 with specific genotype, 0 if not
-            detect=ifelse(genotype_freq > 0, 1, 0)) %>%    # 1 if detected and 0 if not detected with specific genotype
+            coreGenotype=ifelse(genotype_freq == 1, 1, 0)) %>% # 1 only if occupancy 1 with specific genotype, 0 if not
   group_by(otu) %>%
   summarise(sumF=sum(genotype_freq),
             sumG=sum(coreGenotype),
-            sumD=sum(detect),
-            nS=length(Origin)*3,
-            Index=(sumF+sumG+sumD)/nS) # calculating weighting Index based on number of time points detected and 
+            nS=length(Origin)*2,
+            Index=(sumF+sumG)/nS) # calculating weighting Index based on number of time points detected and 
 
 otu_ranked <- occ_abun %>%
   left_join(PresenceSum, by='otu') %>%
@@ -315,9 +312,10 @@ ggplot(plotDF,aes(x=otu, genotype_freq, group=Genotype,fill=Genotype)) +    geom
   labs(x='Ranked ZOTUs', y='Occupancy by genotype and origin')
 
 #----------------------------------------------------------------------------------------------------
-#Bean project
+##Prioritizing core microbiome based on the SITE
 
-##Prioritizing core microbiome based on the site
+#Example data - Stopnisek and Ashley (bioXiv, 2019)
+
 nReads=10000
 otu <- readRDS('data/beanOTUtable.rds')
 map <- readRDS('data/beanMAPtable.rds')
@@ -337,9 +335,8 @@ PresenceSum <- data.frame(otu = as.factor(row.names(otu)), otu) %>%
   group_by(otu) %>%
   summarise(sumF=sum(plot_freq),
             sumG=sum(coreSite),
-            sumD=sum(detect),
-            nS=length(site)*3,
-            Index=(sumF+sumG+sumD)/nS) # calculating weighting Index based on number of time points detected and 
+            nS=length(site)*2,
+            Index=(sumF+sumG)/nS) # calculating weighting Index based on number of time points detected and 
 
 otu_ranked <- occ_abun %>%
   left_join(PresenceSum, by='otu') %>%
