@@ -6,10 +6,6 @@
 <i>This work is published.</i>
 
 
-### Data
-The raw data for this study are available in the NCBI SRA under bioproject [number](https://www.ncbi.nlm.nih.gov/sra/?term=number).
-
-
 ### To cite this work or code
 Shade A and N Stopnisek. Abundance-occupancy distributions to prioritize core plant microbiome membership. AOP 9 November 2019. Current Opinion in Microbiology, Focus Issue on the Plant Microbiota. https://doi.org/10.1016/j.mib.2019.09.008
 
