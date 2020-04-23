@@ -45,35 +45,33 @@ otu_ranked <- occ_abun %>%
 # Calculating the contribution of ranked OTUs to the BC similarity
 BCaddition <- NULL
 
-for(i in otu_ranked$otu){
-  # calculating BC dissimilarity based on the 1st ranked OTU
-  otu_start=otu_ranked$otu[1]                   
-  start_matrix <- as.matrix(otu[otu_start,])
-  start_matrix <- t(start_matrix)
-  x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]- start_matrix[,x[2]]))/(2*nReads))
+# calculating BC dissimilarity based on the 1st ranked OTU
+otu_start=otu_ranked$otu[1]                   
+start_matrix <- as.matrix(otu[otu_start,])
+start_matrix <- t(start_matrix)
+x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]- start_matrix[,x[2]]))/(2*nReads))
+x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
+df_s <- data.frame(x_names,x)
+names(df_s)[2] <- 1 
+BCaddition <- rbind(BCaddition,df_s)
+# calculating BC dissimilarity based on additon of ranked OTUs from 2nd to 500th. Can be set to the entire length of OTUs in the dataset, however it might take some time if more than 5000 OTUs are included.
+for(i in 2:500){                              
+  otu_add=otu_ranked$otu[i]                       
+  add_matrix <- as.matrix(otu[otu_add,])
+  add_matrix <- t(add_matrix)
+  start_matrix <- rbind(start_matrix, add_matrix)
+  x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]-start_matrix[,x[2]]))/(2*nReads))
   x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
-  df_s <- data.frame(x_names,x)
-  names(df_s)[2] <- 1 
-  BCaddition <- rbind(BCaddition,df_s)
-  # calculating BC dissimilarity based on additon of ranked OTUs from 2nd to 500th. Can be set to the entire length of OTUs in the dataset, however it might take some time if more than 5000 OTUs are included.
-  for(i in 2:500){                              
-    otu_add=otu_ranked$otu[i]                       
-    add_matrix <- as.matrix(otu[otu_add,])
-    add_matrix <- t(add_matrix)
-    start_matrix <- rbind(start_matrix, add_matrix)
-    x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]-start_matrix[,x[2]]))/(2*nReads))
-    x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
-    df_a <- data.frame(x_names,x)
-    names(df_a)[2] <- i 
-    BCaddition <- left_join(BCaddition, df_a, by=c('x_names'))
-  }
-  # calculating the BC dissimilarity of the whole dataset (not needed if the second loop is already including all OTUs) 
-  x <-  apply(combn(ncol(otu), 2), 2, function(x) sum(abs(otu[,x[1]]-otu[,x[2]]))/(2*nReads))   
-  x_names <- apply(combn(ncol(otu), 2), 2, function(x) paste(colnames(otu)[x], collapse=' - '))
-  df_full <- data.frame(x_names,x)
-  names(df_full)[2] <- length(rownames(otu))
-  BCfull <- left_join(BCaddition,df_full, by='x_names')
-} 
+  df_a <- data.frame(x_names,x)
+  names(df_a)[2] <- i 
+  BCaddition <- left_join(BCaddition, df_a, by=c('x_names'))
+}
+# calculating the BC dissimilarity of the whole dataset (not needed if the second loop is already including all OTUs) 
+x <-  apply(combn(ncol(otu), 2), 2, function(x) sum(abs(otu[,x[1]]-otu[,x[2]]))/(2*nReads))   
+x_names <- apply(combn(ncol(otu), 2), 2, function(x) paste(colnames(otu)[x], collapse=' - '))
+df_full <- data.frame(x_names,x)
+names(df_full)[2] <- length(rownames(otu))
+BCfull <- left_join(BCaddition,df_full, by='x_names')
 
 rownames(BCfull) <- BCfull$x_names
 temp_BC <- BCfull
@@ -84,7 +82,7 @@ BC_ranked <- data.frame(rank = as.factor(row.names(t(temp_BC_matrix))),t(temp_BC
   gather(comparison, BC, -rank) %>%
   group_by(rank) %>%
   summarise(MeanBC=mean(BC)) %>%            # mean Bray-Curtis dissimilarity
-  arrange(-desc(MeanBC)) %>%
+  arrange(desc(-MeanBC)) %>%
   mutate(proportionBC=MeanBC/max(MeanBC))   # proportion of the dissimilarity explained by the n number of ranked OTUs
 Increase=BC_ranked$MeanBC[-1]/BC_ranked$MeanBC[-length(BC_ranked$MeanBC)]
 increaseDF <- data.frame(IncreaseBC=c(0,(Increase)), rank=factor(c(1:(length(Increase)+1))))
@@ -201,34 +199,32 @@ otu_ranked <- occ_abun %>%
   arrange(desc(rank))
 
 BCaddition <- NULL
-for(i in otu_ranked$otu){
-  otu_start=otu_ranked$otu[1]
-  start_matrix <- as.matrix(otu[otu_start,])
-  start_matrix <- t(start_matrix)
-  x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]- start_matrix[,x[2]]))/(2*nReads))
+otu_start=otu_ranked$otu[1]
+start_matrix <- as.matrix(otu[otu_start,])
+start_matrix <- t(start_matrix)
+x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]- start_matrix[,x[2]]))/(2*nReads))
+x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
+df_s <- data.frame(x_names,x)
+names(df_s)[2] <- 1 
+BCaddition <- rbind(BCaddition,df_s)
+  
+for(i in 2:500){
+  otu_add=otu_ranked$otu[i]
+  add_matrix <- as.matrix(otu[otu_add,])
+  add_matrix <- t(add_matrix)
+  start_matrix <- rbind(start_matrix, add_matrix)
+  x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]-start_matrix[,x[2]]))/(2*nReads))
   x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
-  df_s <- data.frame(x_names,x)
-  names(df_s)[2] <- 1 
-  BCaddition <- rbind(BCaddition,df_s)
+  df_a <- data.frame(x_names,x)
+  names(df_a)[2] <- i 
+  BCaddition <- left_join(BCaddition, df_a, by=c('x_names'))
+}
   
-  for(i in 2:500){
-    otu_add=otu_ranked$otu[i]
-    add_matrix <- as.matrix(otu[otu_add,])
-    add_matrix <- t(add_matrix)
-    start_matrix <- rbind(start_matrix, add_matrix)
-    x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]-start_matrix[,x[2]]))/(2*nReads))
-    x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
-    df_a <- data.frame(x_names,x)
-    names(df_a)[2] <- i 
-    BCaddition <- left_join(BCaddition, df_a, by=c('x_names'))
-  }
-  
-  x <-  apply(combn(ncol(otu), 2), 2, function(x) sum(abs(otu[,x[1]]-otu[,x[2]]))/(2*nReads))
-  x_names <- apply(combn(ncol(otu), 2), 2, function(x) paste(colnames(otu)[x], collapse=' - '))
-  df_full <- data.frame(x_names,x)
-  names(df_full)[2] <- length(rownames(otu))
-  BCfull <- left_join(BCaddition,df_full, by='x_names')
-} 
+x <-  apply(combn(ncol(otu), 2), 2, function(x) sum(abs(otu[,x[1]]-otu[,x[2]]))/(2*nReads))
+x_names <- apply(combn(ncol(otu), 2), 2, function(x) paste(colnames(otu)[x], collapse=' - '))
+df_full <- data.frame(x_names,x)
+names(df_full)[2] <- length(rownames(otu))
+BCfull <- left_join(BCaddition,df_full, by='x_names')
 
 rownames(BCfull) <- BCfull$x_names
 temp_BC <- BCfull
@@ -345,35 +341,34 @@ otu_ranked <- occ_abun %>%
   arrange(desc(rank))
 
 BCaddition <- NULL
-for(i in otu_ranked$otu){
-  otu_start=otu_ranked$otu[1]
-  start_matrix <- as.matrix(otu[otu_start,])
-  start_matrix <- t(start_matrix)
-  x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]- start_matrix[,x[2]]))/(2*nReads))
-  x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
-  df_s <- data.frame(x_names,x)
-  names(df_s)[2] <- 1 
-  BCaddition <- rbind(BCaddition,df_s)
-  
-  for(i in 2:500){
-    otu_add=otu_ranked$otu[i]
-    add_matrix <- as.matrix(otu[otu_add,])
-    add_matrix <- t(add_matrix)
-    start_matrix <- rbind(start_matrix, add_matrix)
-    x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]-start_matrix[,x[2]]))/(2*nReads))
-    x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
-    df_a <- data.frame(x_names,x)
-    names(df_a)[2] <- i 
-    BCaddition <- left_join(BCaddition, df_a, by=c('x_names'))
-  }
-  
-  x <-  apply(combn(ncol(otu), 2), 2, function(x) sum(abs(otu[,x[1]]-otu[,x[2]]))/(2*nReads))
-  x_names <- apply(combn(ncol(otu), 2), 2, function(x) paste(colnames(otu)[x], collapse=' - '))
-  df_full <- data.frame(x_names,x)
-  names(df_full)[2] <- length(rownames(otu))
-  BCfull <- left_join(BCaddition,df_full, by='x_names')
-} 
 
+otu_start=otu_ranked$otu[1]
+start_matrix <- as.matrix(otu[otu_start,])
+start_matrix <- t(start_matrix)
+x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]- start_matrix[,x[2]]))/(2*nReads))
+x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
+df_s <- data.frame(x_names,x)
+names(df_s)[2] <- 1 
+BCaddition <- rbind(BCaddition,df_s)
+  
+for(i in 2:500){
+  otu_add=otu_ranked$otu[i]
+  add_matrix <- as.matrix(otu[otu_add,])
+  add_matrix <- t(add_matrix)
+  start_matrix <- rbind(start_matrix, add_matrix)
+  x <- apply(combn(ncol(start_matrix), 2), 2, function(x) sum(abs(start_matrix[,x[1]]-start_matrix[,x[2]]))/(2*nReads))
+  x_names <- apply(combn(ncol(start_matrix), 2), 2, function(x) paste(colnames(start_matrix)[x], collapse=' - '))
+  df_a <- data.frame(x_names,x)
+  names(df_a)[2] <- i 
+  BCaddition <- left_join(BCaddition, df_a, by=c('x_names'))  
+}
+  
+x <-  apply(combn(ncol(otu), 2), 2, function(x) sum(abs(otu[,x[1]]-otu[,x[2]]))/(2*nReads))
+x_names <- apply(combn(ncol(otu), 2), 2, function(x) paste(colnames(otu)[x], collapse=' - '))
+df_full <- data.frame(x_names,x)
+names(df_full)[2] <- length(rownames(otu))
+BCfull <- left_join(BCaddition,df_full, by='x_names')
+ 
 rownames(BCfull) <- BCfull$x_names
 temp_BC <- BCfull
 temp_BC$x_names <- NULL
